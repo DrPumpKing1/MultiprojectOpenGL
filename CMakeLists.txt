@@ -52,28 +52,24 @@ ELSE()
     set(LIBS )
 ENDIF(WIN32)
 
-MACRO(subdirlist result_var current_dir)
-    file(GLOB children "${current_dir}/*")
-
-    set(dir_list "")
-    FOREACH(child ${children})
-        IF(IS_DIRECTORY ${child})
-            list(APPEND dir_list ${child})
-        ENDIF()
-    ENDFOREACH()
-
-    set(${result_var} ${dir_list} PARENT_SCOPE)
-ENDMACRO()
-
-subdirlist(PROJECTS ${CMAKE_SOURCE_DIR}/projects)
+file(GLOB children "${CMAKE_SOURCE_DIR}/src/*")
+set(PROJECTS "")
+FOREACH(child ${children})
+    IF(IS_DIRECTORY ${child})
+        cmake_path(NORMAL_PATH child)
+        cmake_path(GET child FILENAME LAST_DIR_NAME)
+        list(APPEND PROJECTS ${LAST_DIR_NAME})
+    ENDIF()
+ENDFOREACH()
+message(STATUS "Projects found: ${PROJECTS}")
 
 configure_file(configuration/root_directory.h.in configuration/root_directory.h)
 include_directories(${CMAKE_BINARY_DIR}/configuration)
 
-add_library(STB_IMAGE stb_image.cpp)
+add_library(STB_IMAGE src/stb_image.cpp)
 set(LIBS ${LIBS} STB_IMAGE)
 
-add_library(GLAD gl.c)
+add_library(GLAD src/gl.c)
 set(LIBS ${LIBS} GLAD)
 
 MACRO(makeLink src dest target)
@@ -82,22 +78,8 @@ ENDMACRO()
 
 FUNCTION(create_project project)
 	file(GLOB SOURCE
-            "projects/${project}/*.h"
-            "projects/${project}/*.cpp"
-            "projects/${project}/*.vs"
-            "projects/${project}/*.fs"
-            "projects/${project}/*.tcs"
-            "projects/${project}/*.tes"
-            "projects/${project}/*.gs"
-            "projects/${project}/*.cs"
-            "src/*.h"
-            "src/*.cpp"
-            "src/.vs"
-            "src/.fs"
-            "src/.tcs"
-            "src/.tes"
-            "src/.gs"
-            "src/.cs"
+            "src/${project}/*.h"
+            "src/${project}/*.cpp"
     )
 	set(NAME "${project}")
     add_executable(${NAME} ${COMMON} ${SOURCE})
@@ -118,18 +100,12 @@ FUNCTION(create_project project)
     ENDIF(WIN32)
     # copy shader files to build directory
     file(GLOB SHADERS
-            "projects/${project}/*.vs"
-            "projects/${project}/*.fs"
-            "projects/${project}/*.tcs"
-            "projects/${project}/*.tes"
-            "projects/${project}/*.gs"
-            "projects/${project}/*.cs"
-            "src/.vs"
-            "src/.fs"
-            "src/.tcs"
-            "src/.tes"
-            "src/.gs"
-            "src/.cs"
+            "resources/shaders/*.vs"
+            "resources/shaders/*.fs"
+            "resources/shaders/*.tcs"
+            "resources/shaders/*.tes"
+            "resources/shaders/*.gs"
+            "resources/shaders/*.cs"
     )
 	# copy dlls
 	file(GLOB DLLS "dlls/*.dll")
@@ -157,3 +133,4 @@ FOREACH(PROJECT ${PROJECTS})
 ENDFOREACH(PROJECT)
 
 include_directories(${CMAKE_SOURCE_DIR}/includes)
+include_directories(${CMAKE_SOURCE_DIR}/src)
