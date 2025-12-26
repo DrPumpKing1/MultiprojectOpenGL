@@ -70,10 +70,10 @@ subdirlist(PROJECTS ${CMAKE_SOURCE_DIR}/projects)
 configure_file(configuration/root_directory.h.in configuration/root_directory.h)
 include_directories(${CMAKE_BINARY_DIR}/configuration)
 
-add_library(STB_IMAGE src/stb_image.cpp)
+add_library(STB_IMAGE stb_image.cpp)
 set(LIBS ${LIBS} STB_IMAGE)
 
-add_library(GLAD src/gl.c)
+add_library(GLAD gl.c)
 set(LIBS ${LIBS} GLAD)
 
 MACRO(makeLink src dest target)
