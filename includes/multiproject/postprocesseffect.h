@@ -24,9 +24,13 @@ public:
 	unsigned int framebuffer;
 	unsigned int textureColorBuffer;
 	unsigned int RBO;
+	unsigned int width, height;
 
     PostProcessEffect(const unsigned int screenWidth, const unsigned int screenHeight)
     {
+		width = screenWidth;
+		height = screenHeight;
+
 		glGenVertexArrays(1, &quadVAO);
 		glGenBuffers(1, &quadVBO);
 		glBindVertexArray(quadVAO);
@@ -42,14 +46,14 @@ public:
 
 		glGenTextures(1, &textureColorBuffer);
 		glBindTexture(GL_TEXTURE_2D, textureColorBuffer);
-		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, screenWidth, screenHeight, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, textureColorBuffer, 0);
 
 		glGenRenderbuffers(1, &RBO);
 		glBindRenderbuffer(GL_RENDERBUFFER, RBO);
-		glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, screenWidth, screenHeight);
+		glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, width, height);
 		glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, RBO);
 
 		if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
@@ -76,5 +80,19 @@ public:
 		glBindTexture(GL_TEXTURE_2D, textureColorBuffer);
 		glDrawArrays(GL_TRIANGLES, 0, 6);
 		glBindVertexArray(0);
+	}
+
+	void Resize(const unsigned int screenWidth, const unsigned int screenHeight)
+	{
+		width = screenWidth;
+		height = screenHeight;
+
+		glBindTexture(GL_TEXTURE_2D, textureColorBuffer);
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
+		glBindTexture(GL_TEXTURE_2D, 0);
+
+		glBindRenderbuffer(GL_RENDERBUFFER, RBO);
+		glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, width, height);
+		glBindRenderbuffer(GL_RENDERBUFFER, 0);
 	}
 };

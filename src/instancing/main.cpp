@@ -61,6 +61,8 @@ std::vector<glm::mat4> instancesModelMatrices;
 float radius = 150.0;
 float offset = 25.0f;
 
+PostProcessEffect *postProcessEffect;
+
 int main(void)
 {
     GLFWwindow* window;
@@ -89,7 +91,7 @@ int main(void)
     glfwMakeContextCurrent(window);
     glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
     glfwSetCursorPosCallback(window, mouse_callback);
-    //glfwSetScrollCallback(window, scroll_callback);
+    glfwSetScrollCallback(window, scroll_callback);
 
     glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 
@@ -118,15 +120,16 @@ int main(void)
 	//Loading skybox
     /*
     Skybox skybox(
-        (cubemapsFolder + "Storforsen3\\posx.jpg").c_str(),
-        (cubemapsFolder + "Storforsen3\\negx.jpg").c_str(),
-        (cubemapsFolder + "Storforsen3\\posy.jpg").c_str(),
-        (cubemapsFolder + "Storforsen3\\negy.jpg").c_str(),
-        (cubemapsFolder + "Storforsen3\\posz.jpg").c_str(),
-        (cubemapsFolder + "Storforsen3\\negz.jpg").c_str(),
+        FileSystem::getPath("resources/cubemaps/Storforsen3/posx.jpg").c_str(),
+        FileSystem::getPath("resources/cubemaps/Storforsen3/negx.jpg").c_str(),
+        FileSystem::getPath("resources/cubemaps/Storforsen3/posy.jpg").c_str(),
+        FileSystem::getPath("resources/cubemaps/Storforsen3/negy.jpg").c_str(),
+        FileSystem::getPath("resources/cubemaps/Storforsen3/posz.jpg").c_str(),
+        FileSystem::getPath("resources/cubemaps/Storforsen3/negz.jpg").c_str(),
         4
     );
     */
+
     Skybox skybox(
         FileSystem::getPath("resources/cubemaps/Galaxy/right.png").c_str(),
         FileSystem::getPath("resources/cubemaps/Galaxy/left.png").c_str(),
@@ -207,7 +210,7 @@ int main(void)
     };
     SpotLight spotLight(spotLightData);
 
-	PostProcessEffect postProcessEffect(SCR_WIDTH, SCR_HEIGHT);
+	postProcessEffect = new PostProcessEffect(SCR_WIDTH, SCR_HEIGHT);
 
     //Transparent plane
 	unsigned int transparentVAO, transparentVBO;
@@ -241,7 +244,7 @@ int main(void)
 	glBindBuffer(GL_UNIFORM_BUFFER, 0);
 	glBindBufferRange(GL_UNIFORM_BUFFER, 0, uboMatrices, 0, 2 * sizeof(glm::mat4));
 
-	glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 1000.0f);
+	glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (float)CURR_WIDTH / (float)CURR_HEIGHT, 0.1f, 1000.0f);
 	glBindBuffer(GL_UNIFORM_BUFFER, uboMatrices);
 	glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(glm::mat4), glm::value_ptr(projection));
 	glBindBuffer(GL_UNIFORM_BUFFER, 0);
@@ -282,7 +285,7 @@ int main(void)
 
         //render
         //------
-		postProcessEffect.Bind();
+		postProcessEffect->Bind();
 		glEnable(GL_DEPTH_TEST); // enable depth testing (is disabled for rendering screen-space quad)
 		glEnable(GL_CULL_FACE);
 
@@ -290,9 +293,12 @@ int main(void)
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         glm::mat4 view = camera.GetViewMatrix();
+	    projection = glm::perspective(glm::radians(camera.Zoom), (float)CURR_WIDTH / (float)CURR_HEIGHT, 0.1f, 1000.0f);
 		glBindBuffer(GL_UNIFORM_BUFFER, uboMatrices);
+		glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(glm::mat4), glm::value_ptr(projection));
 		glBufferSubData(GL_UNIFORM_BUFFER, sizeof(glm::mat4), sizeof(glm::mat4), glm::value_ptr(view));
 		glBindBuffer(GL_UNIFORM_BUFFER, 0);
+
 
         modelShader.Activate();
         //setting lighting uniforms
@@ -364,13 +370,13 @@ int main(void)
         */
 		glBindVertexArray(0);
 
-		postProcessEffect.Unbind();
+		postProcessEffect->Unbind();
         glDisable(GL_DEPTH_TEST);
 
 		glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT);
 
-		postProcessEffect.Render(postprocessShader);
+		postProcessEffect->Render(postprocessShader);
 
         // glfw: swap buffers and poll IO events (keys pressed/released, mouse moved etc.)
         // -------------------------------------------------------------------------------
@@ -387,14 +393,23 @@ void processInput(GLFWwindow *window)
     if(glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
         glfwSetWindowShouldClose(window, true);
 
+    if(glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS)
+        camera.ProccesKeyboardSpeed(true);
+    else
+        camera.ProccesKeyboardSpeed(false);
+
     if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
-        camera.ProcessKeyboard(FORWARD, deltaTime);
+        camera.ProcessKeyboardMovement(FORWARD, deltaTime);
     if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
-        camera.ProcessKeyboard(BACKWARD, deltaTime);
+        camera.ProcessKeyboardMovement(BACKWARD, deltaTime);
     if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
-        camera.ProcessKeyboard(LEFT, deltaTime);
+        camera.ProcessKeyboardMovement(LEFT, deltaTime);
     if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
-        camera.ProcessKeyboard(RIGHT, deltaTime);
+        camera.ProcessKeyboardMovement(RIGHT, deltaTime);
+    if (glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS)
+        camera.ProcessKeyboardMovement(UP, deltaTime);
+    if (glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS)
+        camera.ProcessKeyboardMovement(DOWN, deltaTime);
 }
 
 // glfw: whenever the window size changed (by OS or user resize) this callback function executes
@@ -406,6 +421,7 @@ void framebuffer_size_callback(GLFWwindow* window, int width, int height)
     CURR_WIDTH = width;
     CURR_HEIGHT = height;
     glViewport(0, 0, width, height);
+    postProcessEffect->Resize(width, height);
 }
 
 // glfw: whenever the mouse moves, this callback is called
