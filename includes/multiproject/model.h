@@ -10,6 +10,7 @@
 
 #include "mesh.h"
 #include "shader.h"
+#include "filesystem.h"
 
 #include <string>
 #include <fstream>
@@ -52,7 +53,7 @@ class Model
                 return;
             }
             // retrieve the directory path of the filepath
-            directory = path.substr(0, path.find_last_of('\\'));
+            directory = path.substr(0, path.find_last_of(PATH_SEP));
 
             // process ASSIMP's root node recursively
             processNode(scene->mRootNode, scene);
@@ -154,7 +155,7 @@ class Model
                 bool skip = false;
                 for (unsigned int j = 0; j < textures_loaded.size(); j++)
                 {
-					std::string temptativePath = directory + '\\' + std::string(str.C_Str());
+					std::string temptativePath = directory + PATH_SEP + std::string(str.C_Str());
                     if (std::strcmp(textures_loaded[j].path.data(), temptativePath.c_str()) == 0)
                     {
                         textures.push_back(textures_loaded[j]);
@@ -165,7 +166,7 @@ class Model
                 if (!skip)
                 { // if texture hasn't been loaded already, load it
                     std::string path = std::string(str.C_Str());
-                    path = directory + '\\' + path;
+                    path = directory + PATH_SEP + path;
                     Texture texture(path.c_str(), typeName, GL_TEXTURE0 + textures_loaded.size());
                     textures.push_back(texture);
                     textures_loaded.push_back(texture); // add to loaded textures
