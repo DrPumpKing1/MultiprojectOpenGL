@@ -105,7 +105,7 @@ int main(void)
 
     //Building and compiling our shader program
     Shader modelShader("default.vs", "default.fs");
-    Shader postprocessShader("postprocess.vs", "postprocess.fs");
+    Shader postprocessShader("postprocess.vs", "edgedetection.fs");
 	Shader transparentShader("transparent.vs", "transparent.fs");
 	Shader skyboxShader("skybox.vs", "skybox.fs");
     Shader normalVisualizationShader("normalvisualization.vs", "normalvisualization.fs", "normalvisualization.gs");

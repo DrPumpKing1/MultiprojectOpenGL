@@ -15,6 +15,8 @@
 
 #include <iostream>
 
+# define MATH_PI           3.14159265358979323846
+
 void framebuffer_size_callback(GLFWwindow* window, int width, int height);
 void mouse_callback(GLFWwindow* window, double xpos, double ypos);
 void scroll_callback(GLFWwindow* window, double xoffset, double yoffset);
@@ -27,7 +29,7 @@ unsigned int CURR_WIDTH = SCR_WIDTH;
 unsigned int CURR_HEIGHT = SCR_HEIGHT;
 
 // camera
-Camera camera(glm::vec3(0.0f, 0.0f, 150.0f));
+Camera camera(glm::vec3(0.0f, 0.0f, 10.0f));
 float lastX = SCR_WIDTH / 2.0f;
 float lastY = SCR_HEIGHT / 2.0f;
 bool firstMouse = true;
@@ -104,11 +106,11 @@ int main(void)
     }
 
     //Building and compiling our shader program
-    Shader modelShader("default.vs", "default.fs");
+    Shader modelShader("default.vs", "default.fs", "explode.gs");
     Shader postprocessShader("postprocess.vs", "postprocess.fs");
 	Shader transparentShader("transparent.vs", "transparent.fs");
 	Shader skyboxShader("skybox.vs", "skybox.fs");
-    Shader normalVisualizationShader("normalvisualization.vs", "normalvisualization.fs", "normalvisualization.gs");
+    Shader normalVisualizationShader("normalvisualization.vs", "normalvisualization.fs", "normalvisualizationcentered.gs");
 	Shader asteroidShader("instancing.vs", "default.fs");
 
     //Loading models
@@ -316,22 +318,28 @@ int main(void)
         pointLight.setInShader(modelShader, "pointLights[0]");
         spotLight.setInShader(modelShader, "spotLights[0]");
 
-		//modelShader.setFloat("time", currentFrame);
+		modelShader.setFloat("time", currentFrame);
 
         //render the loaded model
         glm::mat4 model = glm::mat4(1.0f);
-        model = glm::translate(model, glm::vec3(0.0f, -3.0f, 0.0f));
-        model = glm::scale(model, glm::vec3(4.0f, 4.0f, 4.0f));
+        model = glm::translate(model, glm::vec3(0.0f, 0.0f, 0.0f));
+        model = glm::scale(model, glm::vec3(1.0f, 1.0f, 1.0f));
         modelShader.setMat4("model", model);
         defaultModel.Draw(modelShader);
 
-        /*
+        model = glm::mat4(1.0f);
+        model = glm::translate(model, glm::vec3(-10.0f, 0.0f, 0.0f));
+        model = glm::scale(model, glm::vec3(1.0f, 1.0f, 1.0f));
+		modelShader.setFloat("time", -MATH_PI / 2.0);
+        modelShader.setMat4("model", model);
+
+        defaultModel.Draw(modelShader);
 		normalVisualizationShader.Activate();
         normalVisualizationShader.setMat4("model", model);
         defaultModel.Draw(normalVisualizationShader);
-        */
 
 		//render asteroids
+        /*
         asteroidShader.Activate();
         asteroidShader.setVec3("viewPos", camera.Position);
         asteroidShader.setFloat("material.shininess", 16.0f);
@@ -343,8 +351,9 @@ int main(void)
         pointLight.setInShader(asteroidShader, "pointLights[0]");
         spotLight.setInShader(asteroidShader, "spotLights[0]");
 		asteroids.Draw(asteroidShader);
+        */
 
-		glDisable(GL_CULL_FACE);
+        glDisable(GL_CULL_FACE);
 
         //render the skybox
         view = glm::mat4(glm::mat3(camera.GetViewMatrix()));

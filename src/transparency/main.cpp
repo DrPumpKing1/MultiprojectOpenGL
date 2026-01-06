@@ -27,7 +27,7 @@ unsigned int CURR_WIDTH = SCR_WIDTH;
 unsigned int CURR_HEIGHT = SCR_HEIGHT;
 
 // camera
-Camera camera(glm::vec3(0.0f, 0.0f, 150.0f));
+Camera camera(glm::vec3(0.0f, 0.0f, 0.0f));
 float lastX = SCR_WIDTH / 2.0f;
 float lastY = SCR_HEIGHT / 2.0f;
 bool firstMouse = true;
@@ -56,10 +56,10 @@ std::vector<glm::vec3> windows
     glm::vec3(0.5f, 0.0f, -6.6f)
 };
 
-unsigned int instances = 100000;
+unsigned int instances = 10000;
 std::vector<glm::mat4> instancesModelMatrices;
-float radius = 150.0;
-float offset = 25.0f;
+float radius = 5.0;
+float offset = 1.0f;
 
 PostProcessEffect *postProcessEffect;
 
@@ -118,7 +118,6 @@ int main(void)
 	Texture transparentTexture(FileSystem::getPath("resources/textures/window.png").c_str(), "diffuse", 0, true);
 
 	//Loading skybox
-    /*
     Skybox skybox(
         FileSystem::getPath("resources/cubemaps/Storforsen3/posx.jpg").c_str(),
         FileSystem::getPath("resources/cubemaps/Storforsen3/negx.jpg").c_str(),
@@ -128,8 +127,8 @@ int main(void)
         FileSystem::getPath("resources/cubemaps/Storforsen3/negz.jpg").c_str(),
         4
     );
-    */
 
+    /*
     Skybox skybox(
         FileSystem::getPath("resources/cubemaps/Galaxy/right.png").c_str(),
         FileSystem::getPath("resources/cubemaps/Galaxy/left.png").c_str(),
@@ -139,6 +138,7 @@ int main(void)
         FileSystem::getPath("resources/cubemaps/Galaxy/back.png").c_str(),
         4
     );
+    */
 
     srand(static_cast<unsigned int>(glfwGetTime())); // initialize random seed
     for (unsigned int i = 0; i < instances; i++)
@@ -166,7 +166,7 @@ int main(void)
         instancesModelMatrices.push_back(model);
     }
 
-    Model asteroids(FileSystem::getPath("resources/objects/rocks/rock_001.obj").c_str(), instances, instancesModelMatrices);
+    //Model asteroids(FileSystem::getPath("resources/objects/rocks/rock_001.obj").c_str(), instances, instancesModelMatrices);
 
     //Setting Lighting
     int numDirLights = 1;
@@ -276,11 +276,12 @@ int main(void)
         processInput(window);
 
         //depth sorting transparent objects
-        std::map<float, glm::vec3> sorted;
-        for (unsigned int i = 0; i < windows.size(); i++)
+        std::map<float, glm::mat4> sortedModelMatrices;
+        for (unsigned int i = 0; i < instancesModelMatrices.size(); i++)
         {
-            float distance = glm::length(camera.Position - windows[i]);
-            sorted[distance] = windows[i];
+            glm::vec3 position = glm::vec3(instancesModelMatrices[i][3]);
+            float distance = glm::length(camera.Position - position);
+            sortedModelMatrices[distance] = instancesModelMatrices[i];
         }
 
         //render
@@ -300,13 +301,12 @@ int main(void)
 		glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
 
+        /*
         modelShader.Activate();
         //setting lighting uniforms
         modelShader.setVec3("viewPos", camera.Position);
-        /*
 		skybox.cubemap.Bind();
 		skybox.cubemap.SetShaderUniform(modelShader, "skybox");
-        */
         modelShader.setFloat("material.shininess", 16.0f);
         modelShader.setBool("blinn", true);
         modelShader.setInt("numDirLights", numDirLights);
@@ -315,6 +315,7 @@ int main(void)
         dirLight.setInShader(modelShader, "dirLights[0]");
         pointLight.setInShader(modelShader, "pointLights[0]");
         spotLight.setInShader(modelShader, "spotLights[0]");
+        */
 
 		//modelShader.setFloat("time", currentFrame);
 
@@ -332,6 +333,7 @@ int main(void)
         */
 
 		//render asteroids
+        /*
         asteroidShader.Activate();
         asteroidShader.setVec3("viewPos", camera.Position);
         asteroidShader.setFloat("material.shininess", 16.0f);
@@ -343,6 +345,7 @@ int main(void)
         pointLight.setInShader(asteroidShader, "pointLights[0]");
         spotLight.setInShader(asteroidShader, "spotLights[0]");
 		asteroids.Draw(asteroidShader);
+        */
 
 		glDisable(GL_CULL_FACE);
 
@@ -354,20 +357,16 @@ int main(void)
 		skybox.Draw(skyboxShader);
 
         //render transparents objects
-        /*
 		transparentShader.Activate();
         glBindVertexArray(transparentVAO);
         glActiveTexture(GL_TEXTURE0);
 		transparentTexture.Bind();
 		transparentTexture.SetShaderUniform(transparentShader, "texture1");
-        for (std::map<float, glm::vec3>::reverse_iterator it = sorted.rbegin(); it != sorted.rend(); ++it)
+        for (std::map<float, glm::mat4>::reverse_iterator it = sortedModelMatrices.rbegin(); it != sortedModelMatrices.rend(); ++it)
         {
-            model = glm::mat4(1.0f);
-            model = glm::translate(model, it->second);
-            transparentShader.setMat4("model", model);
+            transparentShader.setMat4("model", it->second);
             glDrawArrays(GL_TRIANGLES, 0, 6);
         }
-        */
 		glBindVertexArray(0);
 
 		postProcessEffect->Unbind();

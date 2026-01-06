@@ -27,7 +27,7 @@ unsigned int CURR_WIDTH = SCR_WIDTH;
 unsigned int CURR_HEIGHT = SCR_HEIGHT;
 
 // camera
-Camera camera(glm::vec3(0.0f, 0.0f, 150.0f));
+Camera camera(glm::vec3(0.0f, 0.0f, 2.5f));
 float lastX = SCR_WIDTH / 2.0f;
 float lastY = SCR_HEIGHT / 2.0f;
 bool firstMouse = true;
@@ -55,11 +55,6 @@ std::vector<glm::vec3> windows
     glm::vec3(-0.3f, 0.0f, -7.3f),
     glm::vec3(0.5f, 0.0f, -6.6f)
 };
-
-unsigned int instances = 100000;
-std::vector<glm::mat4> instancesModelMatrices;
-float radius = 150.0;
-float offset = 25.0f;
 
 PostProcessEffect *postProcessEffect;
 
@@ -104,7 +99,8 @@ int main(void)
     }
 
     //Building and compiling our shader program
-    Shader modelShader("default.vs", "default.fs");
+    Shader refractionShader("default.vs", "refractions.fs");
+    Shader reflectionShader("default.vs", "reflections.fs");
     Shader postprocessShader("postprocess.vs", "postprocess.fs");
 	Shader transparentShader("transparent.vs", "transparent.fs");
 	Shader skyboxShader("skybox.vs", "skybox.fs");
@@ -112,13 +108,12 @@ int main(void)
 	Shader asteroidShader("instancing.vs", "default.fs");
 
     //Loading models
-    Model defaultModel(FileSystem::getPath("resources/objects/planet/planet.obj").c_str());
+    Model defaultModel(FileSystem::getPath("resources/objects/backpack/backpack.obj").c_str());
 
 	//Loading textures
 	Texture transparentTexture(FileSystem::getPath("resources/textures/window.png").c_str(), "diffuse", 0, true);
 
 	//Loading skybox
-    /*
     Skybox skybox(
         FileSystem::getPath("resources/cubemaps/Storforsen3/posx.jpg").c_str(),
         FileSystem::getPath("resources/cubemaps/Storforsen3/negx.jpg").c_str(),
@@ -128,8 +123,8 @@ int main(void)
         FileSystem::getPath("resources/cubemaps/Storforsen3/negz.jpg").c_str(),
         4
     );
-    */
 
+    /*
     Skybox skybox(
         FileSystem::getPath("resources/cubemaps/Galaxy/right.png").c_str(),
         FileSystem::getPath("resources/cubemaps/Galaxy/left.png").c_str(),
@@ -139,34 +134,7 @@ int main(void)
         FileSystem::getPath("resources/cubemaps/Galaxy/back.png").c_str(),
         4
     );
-
-    srand(static_cast<unsigned int>(glfwGetTime())); // initialize random seed
-    for (unsigned int i = 0; i < instances; i++)
-    {
-        glm::mat4 model = glm::mat4(1.0f);
-        // 1. translation: displace along circle with 'radius' in range [-offset, offset]
-        float angle = (float)i / (float)instances * 360.0f;
-        float displacement = (rand() % (int)(2 * offset * 100)) / 100.0f - offset;
-        float x = sin(angle) * radius + displacement;
-        displacement = (rand() % (int)(2 * offset * 100)) / 100.0f - offset;
-        float y = displacement * 0.4f; // keep height of asteroid field smaller compared to width of x and z
-        displacement = (rand() % (int)(2 * offset * 100)) / 100.0f - offset;
-        float z = cos(angle) * radius + displacement;
-        model = glm::translate(model, glm::vec3(x, y, z));
-
-        // 2. scale: Scale between 0.05 and 0.25f
-        float scale = static_cast<float>((rand() % 20) / 100.0 + 0.05);
-        model = glm::scale(model, glm::vec3(scale));
-
-        // 3. rotation: add random rotation around a (semi)randomly picked rotation axis vector
-        float rotAngle = static_cast<float>((rand() % 360));
-        model = glm::rotate(model, rotAngle, glm::vec3(0.4f, 0.6f, 0.8f));
-
-        // 4. now add to list of matrices
-        instancesModelMatrices.push_back(model);
-    }
-
-    Model asteroids(FileSystem::getPath("resources/objects/rocks/rock_001.obj").c_str(), instances, instancesModelMatrices);
+    */
 
     //Setting Lighting
     int numDirLights = 1;
@@ -226,8 +194,10 @@ int main(void)
 	glBindVertexArray(0);
 
     //Uniform Block Index
-	unsigned int uniformBlockIndexModel = glGetUniformBlockIndex(modelShader.ID, "Matrices");
-	glUniformBlockBinding(modelShader.ID, uniformBlockIndexModel, 0);
+	unsigned int uniformBlockIndexModelRefraction = glGetUniformBlockIndex(refractionShader.ID, "Matrices");
+	glUniformBlockBinding(refractionShader.ID, uniformBlockIndexModelRefraction, 0);
+	unsigned int uniformBlockIndexModelReflection = glGetUniformBlockIndex(reflectionShader.ID, "Matrices");
+	glUniformBlockBinding(reflectionShader.ID, uniformBlockIndexModelReflection, 0);
 	unsigned int uniformBlockIndexTransparent = glGetUniformBlockIndex(transparentShader.ID, "Matrices");
 	glUniformBlockBinding(transparentShader.ID, uniformBlockIndexTransparent, 0);
 	unsigned int uniformBlockIndexSkybox = glGetUniformBlockIndex(skyboxShader.ID, "Matrices");
@@ -300,49 +270,57 @@ int main(void)
 		glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
 
-        modelShader.Activate();
+        refractionShader.Activate();
         //setting lighting uniforms
-        modelShader.setVec3("viewPos", camera.Position);
-        /*
+        refractionShader.setVec3("viewPos", camera.Position);
 		skybox.cubemap.Bind();
-		skybox.cubemap.SetShaderUniform(modelShader, "skybox");
-        */
-        modelShader.setFloat("material.shininess", 16.0f);
-        modelShader.setBool("blinn", true);
-        modelShader.setInt("numDirLights", numDirLights);
-        modelShader.setInt("numPointLights", numPointLights);
-        modelShader.setInt("numSpotLights", numSpotLights);
-        dirLight.setInShader(modelShader, "dirLights[0]");
-        pointLight.setInShader(modelShader, "pointLights[0]");
-        spotLight.setInShader(modelShader, "spotLights[0]");
+		skybox.cubemap.SetShaderUniform(refractionShader, "skybox");
+        refractionShader.setFloat("material.shininess", 16.0f);
+        refractionShader.setBool("blinn", true);
+        refractionShader.setInt("numDirLights", numDirLights);
+        refractionShader.setInt("numPointLights", numPointLights);
+        refractionShader.setInt("numSpotLights", numSpotLights);
+        dirLight.setInShader(refractionShader, "dirLights[0]");
+        pointLight.setInShader(refractionShader, "pointLights[0]");
+        spotLight.setInShader(refractionShader, "spotLights[0]");
 
 		//modelShader.setFloat("time", currentFrame);
 
         //render the loaded model
         glm::mat4 model = glm::mat4(1.0f);
-        model = glm::translate(model, glm::vec3(0.0f, -3.0f, 0.0f));
-        model = glm::scale(model, glm::vec3(4.0f, 4.0f, 4.0f));
-        modelShader.setMat4("model", model);
-        defaultModel.Draw(modelShader);
+        model = glm::translate(model, glm::vec3(-2.5f, 0.0f, 0.0f));
+        model = glm::scale(model, glm::vec3(1.0f, 1.0f, 1.0f));
+        refractionShader.setMat4("model", model);
+        defaultModel.Draw(refractionShader);
+
+        reflectionShader.Activate();
+        //setting lighting uniforms
+        reflectionShader.setVec3("viewPos", camera.Position);
+		skybox.cubemap.Bind();
+		skybox.cubemap.SetShaderUniform(reflectionShader, "skybox");
+        reflectionShader.setFloat("material.shininess", 16.0f);
+        reflectionShader.setBool("blinn", true);
+        reflectionShader.setInt("numDirLights", numDirLights);
+        reflectionShader.setInt("numPointLights", numPointLights);
+        reflectionShader.setInt("numSpotLights", numSpotLights);
+        dirLight.setInShader(reflectionShader, "dirLights[0]");
+        pointLight.setInShader(reflectionShader, "pointLights[0]");
+        spotLight.setInShader(reflectionShader, "spotLights[0]");
+
+		//modelShader.setFloat("time", currentFrame);
+
+        //render the loaded model
+        model = glm::mat4(1.0f);
+        model = glm::translate(model, glm::vec3(2.5f, 0.0f, 0.0f));
+        model = glm::scale(model, glm::vec3(1.0f, 1.0f, 1.0f));
+        reflectionShader.setMat4("model", model);
+        defaultModel.Draw(reflectionShader);
 
         /*
 		normalVisualizationShader.Activate();
         normalVisualizationShader.setMat4("model", model);
         defaultModel.Draw(normalVisualizationShader);
         */
-
-		//render asteroids
-        asteroidShader.Activate();
-        asteroidShader.setVec3("viewPos", camera.Position);
-        asteroidShader.setFloat("material.shininess", 16.0f);
-        asteroidShader.setBool("blinn", true);
-        asteroidShader.setInt("numDirLights", numDirLights);
-        asteroidShader.setInt("numPointLights", numPointLights);
-        asteroidShader.setInt("numSpotLights", numSpotLights);
-        dirLight.setInShader(asteroidShader, "dirLights[0]");
-        pointLight.setInShader(asteroidShader, "pointLights[0]");
-        spotLight.setInShader(asteroidShader, "spotLights[0]");
-		asteroids.Draw(asteroidShader);
 
 		glDisable(GL_CULL_FACE);
 
