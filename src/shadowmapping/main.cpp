@@ -20,33 +20,46 @@ void mouse_callback(GLFWwindow* window, double xpos, double ypos);
 void scroll_callback(GLFWwindow* window, double xoffset, double yoffset);
 void processInput(GLFWwindow* window);
 
-//settings
+//Frame Settings
 const unsigned int SCR_WIDTH = 800;
 const unsigned int SCR_HEIGHT = 800;
 unsigned int CURR_WIDTH = SCR_WIDTH;
 unsigned int CURR_HEIGHT = SCR_HEIGHT;
 
-// camera
-const float farPlane = 1000.0f;
-const float nearPlane = 0.1f;
-Camera camera(glm::vec3(0.0f, 0.0f, 0.0f));
+//Shadow Settings
+const unsigned int SHADOW_WIDTH = 1024;
+const unsigned int SHADOW_HEIGHT = 1024;
+
+//Camera
+Camera camera(glm::vec3(0.0f, 0.0f, 150.0f));
+const float farPlane = 7.5f;
+const float nearPlane = 1.0f;
+
+//Time Management
+float deltaTime = 0.0f;
+float lastFrame = 0.0f;
+
+//Mouse Input Management
 float lastX = SCR_WIDTH / 2.0f;
 float lastY = SCR_HEIGHT / 2.0f;
 bool firstMouse = true;
 
-// timing
-float deltaTime = 0.0f;
-float lastFrame = 0.0f;
-
-const float border = .025f;
-
+//Post Processing Framebuffer
 PostProcessEffect *postProcessEffect;
+
+//Quad vertices for rendering depth map
+float quadVerticesStrip[] = {
+    // positions        // texture Coords
+    -1.0f,  1.0f, 0.0f, 0.0f, 1.0f,
+    -1.0f, -1.0f, 0.0f, 0.0f, 0.0f,
+     1.0f,  1.0f, 0.0f, 1.0f, 1.0f,
+     1.0f, -1.0f, 0.0f, 1.0f, 0.0f,
+};
 
 int main(void)
 {
     GLFWwindow* window;
 
-    /* Initialize the library */
     if (!glfwInit())
         return -1;
 
@@ -58,7 +71,6 @@ int main(void)
     glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
 #endif
 
-    //glfw Window creation
     window = glfwCreateWindow(SCR_WIDTH, SCR_HEIGHT, "Hello World", NULL, NULL);
     if (window == NULL)
     {
@@ -74,94 +86,50 @@ int main(void)
 
     glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 
-    // glad: load all OpenGL function pointers
-    // ---------------------------------------
     if (!gladLoadGL((GLADloadfunc)glfwGetProcAddress))
     {
         std::cout << "Failed to initialize GLAD" << std::endl;
         return -1;
     }
 
-    //Building and compiling our shader program
-    Shader modelShader("defaultNoUbo.vs", "default.fs");
-    Shader shaderSingleColor("defaultNoUbo.vs", "singleColor.fs");
+    Shader shadowShader("depthmap.vs", "depthmap.fs");
+    Shader litShader("defaultNoUboShadow.vs", "defaultShadow.fs");
     Shader postprocessShader("postprocess.vs", "postprocess.fs");
-	Shader skyboxShader("skybox.vs", "skybox.fs");
 
-    //Loading models
     Model defaultModel(FileSystem::getPath("resources/objects/backpack/backpack.obj").c_str());
-
-	//Loading skybox
-    Skybox skybox(
-        FileSystem::getPath("resources/cubemaps/Storforsen3/posx.jpg").c_str(),
-        FileSystem::getPath("resources/cubemaps/Storforsen3/negx.jpg").c_str(),
-        FileSystem::getPath("resources/cubemaps/Storforsen3/posy.jpg").c_str(),
-        FileSystem::getPath("resources/cubemaps/Storforsen3/negy.jpg").c_str(),
-        FileSystem::getPath("resources/cubemaps/Storforsen3/posz.jpg").c_str(),
-        FileSystem::getPath("resources/cubemaps/Storforsen3/negz.jpg").c_str(),
-        4
-    );
-
-    //Setting Lighting
-    int numDirLights = 1;
-    DirectionalLightData dirLightData{
-        glm::vec3(-0.2f, -1.0f, -0.3f), //direction
-
-        glm::vec3(0.5f, 0.5f, 0.5f), //ambient
-        glm::vec3(0.4f, 0.4f, 0.4f),    //diffuse
-        glm::vec3(0.5f, 0.5f, 0.5f)     //specular
-    };
-    DirectionalLight dirLight(dirLightData);
-
-    int numPointLights = 0;
-    PointLightData pointLightData{
-        glm::vec3(-2.0f, 1.0f, 0.0f), //position
-
-        1.0f,   //constant
-        0.09f,   //linear
-        0.032f,   //quadratic
-
-        glm::vec3(0.0f, 0.0f, 0.0f), //ambient
-        glm::vec3(0.8f, 0.8f, 0.8f),    //diffuse
-        glm::vec3(1.0f, 1.0f, 1.0f)     //specular
-    };
-    int numSpotLights = 0;
-    PointLight pointLight(pointLightData);
-
-    SpotLightData spotLightData{
-        camera.Position,        //position
-        camera.Front,           //direction
-        glm::cos(glm::radians(12.5f)), //cutOff
-        glm::cos(glm::radians(15.0f)), //outerCutOff
-
-        1.0f,   //constant
-        0.09f,  //linear
-        0.032f, //quadratic
-
-        glm::vec3(0.0f, 0.0f, 0.0f), //ambient
-        glm::vec3(0.8f, 0.8f, 0.8f), //diffuse
-        glm::vec3(1.0f, 1.0f, 1.0f)  //specular
-    };
-    SpotLight spotLight(spotLightData);
 
 	postProcessEffect = new PostProcessEffect(SCR_WIDTH, SCR_HEIGHT);
 
+    //Light configuration
+    const bool blinn = true;
+    const unsigned int numDirLights = 1;
+    const unsigned int numPointLights = 0;
+    const unsigned int numSpotLights = 0;
+    DirectionalLight* dirLights[numDirLights];
+    dirLights[0] = new DirectionalLight(
+        glm::vec3(0.2f, 0.2f, 0.2f), //ambient
+        glm::vec3(0.5f, 0.5f, 0.5f), //diffuse
+        glm::vec3(1.0f, 1.0f, 1.0f), //specular
+        true,
+        0,
+        glm::vec3(-2.0f, -4.0f, -1.0f) //direction
+    );
+    PointLight* pointLights[1];
+    SpotLight* spotLights[1];
+    litShader.Activate();
+    litShader.setInt("numDirLights", numDirLights);
+    litShader.setInt("numPointLights", numPointLights);
+    litShader.setInt("numSpotLights", numSpotLights);
+    litShader.setBool("blinn", blinn);
+
 	// configure global opengl state
     glEnable(GL_DEPTH_TEST);
-
-    glEnable(GL_STENCIL_TEST);
-    glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
-
     glEnable(GL_CULL_FACE);
     glCullFace(GL_BACK);
     glFrontFace(GL_CCW);
 
-    // render loop
-    // -----------
     while (!glfwWindowShouldClose(window))
     {
-        // per-frame time logic
-        // --------------------
         float currentFrame = static_cast<float>(glfwGetTime());
         deltaTime = currentFrame - lastFrame;
         lastFrame = currentFrame;
@@ -169,83 +137,47 @@ int main(void)
 		std::string title = "FPS: " + fpsCount;
 		glfwSetWindowTitle(window, title.c_str());
 
-        //input
-        //-----
         processInput(window);
 
-        //render
-        //------
-		postProcessEffect->Bind();
-		glEnable(GL_DEPTH_TEST); // enable depth testing (is disabled for rendering screen-space quad)
-        glEnable(GL_STENCIL_TEST);
-		glEnable(GL_CULL_FACE);
-
         glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        glStencilFunc(GL_ALWAYS, 1, 0xFF);
-        glStencilMask(0xFF);
+        //render shadows
+        for(const auto& dirLight : dirLights) {
+            glm::mat4 lightSpaceMatrix;
+            dirLight->getLightSpaceMatrix(lightSpaceMatrix);
+            shadowShader.Activate();
+            shadowShader.setMat4("lightSpaceMatrix", lightSpaceMatrix);
+            dirLight->renderDepthMap([&]() {
+                glm::mat4 model = glm::mat4(1.0f);
+                model = glm::translate(model, glm::vec3(0.0f, 1.5f, 0.0f));
+                model = glm::scale(model, glm::vec3(1.5f));
+                shadowShader.setMat4("model", model);
+                defaultModel.Draw(shadowShader);
+            });
+        }
 
-        glm::mat4 view = camera.GetViewMatrix();
-	    glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (float)CURR_WIDTH / (float)CURR_HEIGHT, nearPlane, farPlane);
+        //render depth map to quad
+        glViewport(0, 0, CURR_WIDTH, CURR_HEIGHT);
+		postProcessEffect->Bind();
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        modelShader.Activate();
-        modelShader.setMat4("projection", projection);
-        modelShader.setMat4("view", view);
-
-        //setting lighting uniforms
-        modelShader.setVec3("viewPos", camera.Position);
-        modelShader.setFloat("material.shininess", 16.0f);
-        modelShader.setBool("blinn", true);
-        modelShader.setInt("numDirLights", numDirLights);
-        modelShader.setInt("numPointLights", numPointLights);
-        modelShader.setInt("numSpotLights", numSpotLights);
-        dirLight.setInShader(modelShader, "dirLights[0]");
-        pointLight.setInShader(modelShader, "pointLights[0]");
-        spotLight.setInShader(modelShader, "spotLights[0]");
-
-        //render the loaded model
+        litShader.Activate();
+        for(unsigned int i = 0; i < numDirLights; i++) {
+            dirLights[i]->bindShadowMap();
+            dirLights[i]->setInShader(litShader, "dirLight", i);
+        }
         glm::mat4 model = glm::mat4(1.0f);
-        model = glm::translate(model, glm::vec3(0.0f, 0.0f, -10.0f));
-        model = glm::scale(model, glm::vec3(1.0f, 1.0f, 1.0f));
-        modelShader.setMat4("model", model);
-        defaultModel.Draw(modelShader);
-
-        glStencilFunc(GL_NOTEQUAL, 1, 0xFF);
-        glStencilMask(0x00);
-        glDepthFunc(GL_ALWAYS);
-
-        shaderSingleColor.Activate();
-        shaderSingleColor.setMat4("projection", projection);
-        shaderSingleColor.setMat4("view", view);
-        model = glm::mat4(1.0f);
-        model = glm::translate(model, glm::vec3(0.0f, 0.0f, -10.0f));
-        model = glm::scale(model, glm::vec3(1.0, 1.0f, 1.0f) * (1.0f + border));
-        shaderSingleColor.setMat4("model", model);
-        defaultModel.Draw(shaderSingleColor);
-
-        //render the skybox
-		glDisable(GL_CULL_FACE);
-
-        view = glm::mat4(glm::mat3(camera.GetViewMatrix()));
-		skyboxShader.Activate();
-		skyboxShader.setMat4("view", view);
-		skyboxShader.setMat4("projection", projection);
-		skybox.Draw(skyboxShader);
-
+        model = glm::translate(model, glm::vec3(0.0f, 1.5f, 0.0f));
+        model = glm::scale(model, glm::vec3(1.5f));
+        litShader.setMat4("model", model);
+        defaultModel.Draw(litShader);
 		postProcessEffect->Unbind();
-        glDisable(GL_DEPTH_TEST);
-        glDisable(GL_STENCIL_TEST);
 
-		glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
+        //render framebuffer
         glClear(GL_COLOR_BUFFER_BIT);
-
 		postProcessEffect->Render(postprocessShader);
 
-        glStencilMask(0xFF);
-
-        // glfw: swap buffers and poll IO events (keys pressed/released, mouse moved etc.)
-        // -------------------------------------------------------------------------------
         glfwSwapBuffers(window);
         glfwPollEvents();
     }
