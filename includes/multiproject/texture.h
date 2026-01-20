@@ -29,7 +29,7 @@ public:
         glBindTexture(GL_TEXTURE_2D, ID);
 
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST_MIPMAP_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST_MIPMAP_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 
 		GLenum wrapMode = transparent ? GL_CLAMP_TO_EDGE : GL_REPEAT;
 
@@ -46,30 +46,32 @@ public:
         if(type == "normal")
         {
             internalFormat = GL_RGB;
-            format = GL_RGBA;
         }
         else if(type == "displacement")
         {
             internalFormat = GL_RED;
-            format = GL_RGBA;
         }
         else if(numColCh == 4)
         {
-            internalFormat = GL_SRGB_ALPHA;
-            format = GL_RGBA;
+            internalFormat = GL_SRGB8_ALPHA8;
         }
         else if(numColCh == 3)
         {
-            internalFormat = GL_SRGB;
-            format = GL_RGB;
+            internalFormat = GL_SRGB8;
         }
         else if(numColCh == 1)
         {
             internalFormat = GL_SRGB;
-            format = GL_RED;
         }
         else
             throw std::invalid_argument("Automatic Texture type recognition failed");
+
+        if(numColCh == 4)
+            format = GL_RGBA;
+        else if (numColCh == 3)
+            format = GL_RGB;
+        else
+            format = GL_RED;
 
         glTexImage2D(GL_TEXTURE_2D, 0, internalFormat, widthImg, heightImg, 0, format, GL_UNSIGNED_BYTE, bytes);
         glGenerateMipmap(GL_TEXTURE_2D);

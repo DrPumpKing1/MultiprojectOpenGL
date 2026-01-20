@@ -26,14 +26,10 @@ const unsigned int SCR_HEIGHT = 800;
 unsigned int CURR_WIDTH = SCR_WIDTH;
 unsigned int CURR_HEIGHT = SCR_HEIGHT;
 
-//Shadow Settings
-const unsigned int SHADOW_WIDTH = 1024;
-const unsigned int SHADOW_HEIGHT = 1024;
-
 //Camera
-Camera camera(glm::vec3(0.0f, 0.0f, 150.0f));
-const float farPlane = 7.5f;
-const float nearPlane = 1.0f;
+Camera camera(glm::vec3(0.0f, 0.0f, 5.0f));
+const float farPlane = 1000.0f;
+const float nearPlane = 0.1f;
 
 //Time Management
 float deltaTime = 0.0f;
@@ -71,6 +67,8 @@ int main(void)
     glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
 #endif
 
+    glfwWindowHint(GLFW_SAMPLES, 4);
+
     window = glfwCreateWindow(SCR_WIDTH, SCR_HEIGHT, "Hello World", NULL, NULL);
     if (window == NULL)
     {
@@ -93,6 +91,7 @@ int main(void)
     }
 
     Shader shadowShader("depthmap.vs", "depthmap.fs");
+    Shader shadowCubeShader("depthcubemap.vs", "depthcubemap.fs", "depthcubemap.gs");
     Shader litShader("defaultNoUboShadow.vs", "defaultShadow.fs");
     Shader postprocessShader("postprocess.vs", "postprocess.fs");
 
@@ -103,30 +102,51 @@ int main(void)
     //Light configuration
     const bool blinn = true;
     const unsigned int numDirLights = 1;
-    const unsigned int numPointLights = 0;
-    const unsigned int numSpotLights = 0;
+    const unsigned int numPointLights = 1;
+    const unsigned int numSpotLights = 1;
+    const unsigned int numShadows = 2;
     DirectionalLight* dirLights[numDirLights];
     dirLights[0] = new DirectionalLight(
-        glm::vec3(0.2f, 0.2f, 0.2f), //ambient
-        glm::vec3(0.5f, 0.5f, 0.5f), //diffuse
+        glm::vec3(0.05f, 0.05f, 0.05f), //ambient
+        glm::vec3(0.25f, 0.25f, 0.25f), //diffuse
         glm::vec3(1.0f, 1.0f, 1.0f), //specular
-        true,
-        0,
+        true, 2, 0,             //hasShadow, shadowMap, shadowIndex
         glm::vec3(-2.0f, -4.0f, -1.0f) //direction
     );
-    PointLight* pointLights[1];
-    SpotLight* spotLights[1];
+    PointLight* pointLights[numPointLights];
+    pointLights[0] = new PointLight(
+        glm::vec3(0.05f, 0.05f, 0.05f), //ambient
+        glm::vec3(0.25f, 0.25f, 0.25f), //diffuse
+        glm::vec3(1.0f, 1.0f, 1.0f), //specular
+        true, 3, 0,             //hasShadow, shadowMap, shadowIndex
+        1.0f, 0.09f, 0.032f,   //constant, linear, quadratic
+        glm::vec3(2.0f, 2.0f, 2.0f) //position
+    );
+    SpotLight* spotLights[numSpotLights];
+    spotLights[0] = new SpotLight(
+        glm::vec3(0.0f, 0.0f, 0.0f), //ambient
+        glm::vec3(0.35f, 0.35f, 0.35f), //diffuse
+        glm::vec3(1.0f, 1.0f, 1.0f), //specular
+        false, 4, 1,            //hasShadow, shadowMap, shadowIndex
+        1.0f, 0.09f, 0.032f,   //constant, linear, quadratic
+        camera.Position,        //position
+        camera.Front,           //direction
+        glm::cos(glm::radians(12.5f)), //cutOff
+        glm::cos(glm::radians(15.0f))   //outerCutOff
+    );
     litShader.Activate();
     litShader.setInt("numDirLights", numDirLights);
     litShader.setInt("numPointLights", numPointLights);
     litShader.setInt("numSpotLights", numSpotLights);
     litShader.setBool("blinn", blinn);
+    litShader.setFloat("material.shininess", 32.0f);
 
 	// configure global opengl state
     glEnable(GL_DEPTH_TEST);
     glEnable(GL_CULL_FACE);
     glCullFace(GL_BACK);
     glFrontFace(GL_CCW);
+    glEnable(GL_FRAMEBUFFER_SRGB);
 
     while (!glfwWindowShouldClose(window))
     {
@@ -138,9 +158,12 @@ int main(void)
 		glfwSetWindowTitle(window, title.c_str());
 
         processInput(window);
+        glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (float)CURR_WIDTH / (float)CURR_HEIGHT, nearPlane, farPlane);
+        glm::mat4 view = camera.GetViewMatrix();
 
-        glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        glm::mat4 model = glm::mat4(1.0f);
+        model = glm::translate(model, glm::vec3(0.0f, 0.0f, 1.5f));
+        model = glm::scale(model, glm::vec3(1.0f));
 
         //render shadows
         for(const auto& dirLight : dirLights) {
@@ -148,35 +171,74 @@ int main(void)
             dirLight->getLightSpaceMatrix(lightSpaceMatrix);
             shadowShader.Activate();
             shadowShader.setMat4("lightSpaceMatrix", lightSpaceMatrix);
+            shadowShader.setMat4("model", model);
             dirLight->renderDepthMap([&]() {
-                glm::mat4 model = glm::mat4(1.0f);
-                model = glm::translate(model, glm::vec3(0.0f, 1.5f, 0.0f));
-                model = glm::scale(model, glm::vec3(1.5f));
-                shadowShader.setMat4("model", model);
+                defaultModel.Draw(shadowShader);
+            });
+        }
+        for(const auto& pointLight : pointLights) {
+            std::vector<glm::mat4> shadowTransform = pointLight->getShadowTransformations();
+            shadowCubeShader.Activate();
+            for(unsigned int i = 0; i < 6; i++) {
+                shadowCubeShader.setMat4("shadowTransforms[" + std::to_string(i) + "]", shadowTransform[i]);
+            }
+            shadowCubeShader.setFloat("farPlane", pointLight->farPlane);
+            shadowCubeShader.setVec3("lightPos", pointLight->position);
+            pointLight->renderDepthMap([&]() {
+                defaultModel.Draw(shadowShader);
+            });
+        }
+        for(const auto& spotLight : spotLights) {
+            glm::mat4 lightSpaceMatrix;
+            spotLight->getLightSpaceMatrix(lightSpaceMatrix);
+            shadowShader.Activate();
+            shadowShader.setMat4("lightSpaceMatrix", lightSpaceMatrix);
+            shadowShader.setMat4("model", model);
+            spotLight->renderDepthMap([&]() {
                 defaultModel.Draw(shadowShader);
             });
         }
 
-        //render depth map to quad
+        //render scene
         glViewport(0, 0, CURR_WIDTH, CURR_HEIGHT);
 		postProcessEffect->Bind();
+        glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         litShader.Activate();
+        litShader.setVec3("viewPos", camera.Position);
+        litShader.setMat4("projection", projection);
+        litShader.setMat4("view", view);
+        litShader.setMat4("model", model);
+        glm::mat4 lightSpaceMatrix;
+        litShader.setInt("numShadows", numShadows);
         for(unsigned int i = 0; i < numDirLights; i++) {
             dirLights[i]->bindShadowMap();
-            dirLights[i]->setInShader(litShader, "dirLight", i);
+            dirLights[i]->setInShader(litShader, "dirLights", i);
+            dirLights[i]->getLightSpaceMatrix(lightSpaceMatrix);
+            litShader.setMat4("lightSpaceMatrix[" + std::to_string(dirLights[i]->shadowIndex)  + "]", lightSpaceMatrix);
         }
-        glm::mat4 model = glm::mat4(1.0f);
-        model = glm::translate(model, glm::vec3(0.0f, 1.5f, 0.0f));
-        model = glm::scale(model, glm::vec3(1.5f));
-        litShader.setMat4("model", model);
+        for(unsigned int i = 0; i < numPointLights; i++) {
+            pointLights[i]->bindShadowMap();
+            pointLights[i]->setInShader(litShader, "pointLights", i);
+        }
+        for(unsigned int i = 0; i < numSpotLights; i++) {
+            spotLights[i]->bindShadowMap();
+            spotLights[i]->setInShader(litShader, "spotLights", i);
+            spotLights[i]->getLightSpaceMatrix(lightSpaceMatrix);
+            litShader.setMat4("lightSpaceMatrix[" + std::to_string(spotLights[i]->shadowIndex)  + "]", lightSpaceMatrix);
+        }
         defaultModel.Draw(litShader);
+
+        postProcessEffect->Blit();
 		postProcessEffect->Unbind();
 
         //render framebuffer
+        glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT);
-		postProcessEffect->Render(postprocessShader);
+        glDisable(GL_DEPTH_TEST);
+        postProcessEffect->Render(postprocessShader);
+        glEnable(GL_DEPTH_TEST);
 
         glfwSwapBuffers(window);
         glfwPollEvents();

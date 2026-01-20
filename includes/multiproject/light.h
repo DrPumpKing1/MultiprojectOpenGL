@@ -3,52 +3,6 @@
 #include <glm/glm.hpp>
 #include "shader.h"
 
-struct DirectionalLightData {
-    bool hasShadow;
-
-    glm::vec3 direction;
-
-    glm::vec3 ambient;
-    glm::vec3 diffuse;
-    glm::vec3 specular;
-
-    unsigned int shadowMap;
-};
-
-struct PointLightData {
-    bool hasShadow;
-    unsigned int shadowMap;
-
-    float constant;
-    float linear;
-    float quadratic;
-
-    glm::vec3 position;
-
-    glm::vec3 ambient;
-    glm::vec3 diffuse;
-    glm::vec3 specular;
-};
-
-struct SpotLightData {
-    bool hasShadow;
-    unsigned int shadowMap;
-
-    float cutOff;
-    float outerCutOff;
-
-    float constant;
-    float linear;
-    float quadratic;
-
-    glm::vec3 position;
-    glm::vec3 direction;
-
-    glm::vec3 ambient;
-    glm::vec3 diffuse;
-    glm::vec3 specular;
-};
-
 class Light
 {
     public:
@@ -79,12 +33,12 @@ class LightShadow : public Light {
         bool hasShadow;
         unsigned int shadowMap;
 
-        LightShadow(glm::vec3 ambient, glm::vec3 diffuse, glm::vec3 specular, bool hasShadow, unsigned int shadowMap) : Light(ambient, diffuse, specular) {
+        unsigned int shadowIndex;
+
+        LightShadow(glm::vec3 ambient, glm::vec3 diffuse, glm::vec3 specular, bool hasShadow, unsigned int shadowMap, unsigned int shadowIndex) : Light(ambient, diffuse, specular) {
             this->hasShadow = hasShadow;
             this->shadowMap = shadowMap;
-
-            if(hasShadow)
-                initShadowMap();
+            this->shadowIndex = shadowIndex;
         }
 
         using Light::setInShader;
@@ -92,9 +46,10 @@ class LightShadow : public Light {
             Light::setInShader(shader, name);
             shader.setBool(name + ".hasShadow", hasShadow);
             shader.setInt(name + ".shadowMap", shadowMap);
+            shader.setInt(name + ".shadowIndex", shadowIndex);
         }
 
-        void bindShadowMap() {
+        virtual void bindShadowMap() {
             glActiveTexture(GL_TEXTURE0 + shadowMap);
             glBindTexture(GL_TEXTURE_2D, depthMap);
         }
@@ -129,7 +84,7 @@ class LightAttenuation : public LightShadow {
         float linear;
         float quadratic;
 
-        LightAttenuation(glm::vec3 ambient, glm::vec3 diffuse, glm::vec3 specular, bool hasShadow, unsigned int shadowMap, float constant, float linear, float quadratic) : LightShadow(ambient, diffuse, specular, hasShadow, shadowMap) {
+        LightAttenuation(glm::vec3 ambient, glm::vec3 diffuse, glm::vec3 specular, bool hasShadow, unsigned int shadowMap, unsigned int shadowIndex, float constant, float linear, float quadratic) : LightShadow(ambient, diffuse, specular, hasShadow, shadowMap, shadowIndex) {
             this->constant = constant;
             this->linear = linear;
             this->quadratic = quadratic;
@@ -148,9 +103,12 @@ class DirectionalLight : public LightShadow {
     public:
         glm::vec3 direction;
 
-        DirectionalLight(glm::vec3 ambient, glm::vec3 diffuse, glm::vec3 specular, bool hasShadow, unsigned int shadowMap, glm::vec3 direction)
-            : LightShadow(ambient, diffuse, specular, hasShadow, shadowMap) {
+        DirectionalLight(glm::vec3 ambient, glm::vec3 diffuse, glm::vec3 specular, bool hasShadow, unsigned int shadowMap, unsigned int shadowIndex, glm::vec3 direction)
+            : LightShadow(ambient, diffuse, specular, hasShadow, shadowMap, shadowIndex) {
             this->direction = direction;
+
+            if(hasShadow)
+                initShadowMap();
         }
 
         using LightShadow::setInShader;
@@ -172,8 +130,6 @@ class DirectionalLight : public LightShadow {
         const float farPlane = 7.5f;
 
         void initShadowMap() override {
-            glGenFramebuffers(1, &depthMapFBO);
-
             glGenTextures(1, &depthMap);
             glBindTexture(GL_TEXTURE_2D, depthMap);
             glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, SHADOW_WIDTH, SHADOW_HEIGHT, 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
@@ -184,6 +140,7 @@ class DirectionalLight : public LightShadow {
             float borderColor[] = { 1.0f, 1.0f, 1.0f, 1.0f };
             glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, borderColor);
 
+            glGenFramebuffers(1, &depthMapFBO);
             glBindFramebuffer(GL_FRAMEBUFFER, depthMapFBO);
             glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, depthMap, 0);
             glDrawBuffer(GL_NONE);
@@ -192,12 +149,14 @@ class DirectionalLight : public LightShadow {
         }
 };
 
-class PointLight : LightAttenuation {
+class PointLight : public LightAttenuation {
     public:
         glm::vec3 position;
+        const float nearPlane = 1.0f;
+        const float farPlane = 25.0f;
 
-        PointLight(glm::vec3 ambient, glm::vec3 diffuse, glm::vec3 specular, bool hasShadow, unsigned int shadowMap, float constant, float linear, float quadratic, glm::vec3 position)
-            : LightAttenuation(ambient, diffuse, specular, hasShadow, shadowMap, constant, linear, quadratic) {
+        PointLight(glm::vec3 ambient, glm::vec3 diffuse, glm::vec3 specular, bool hasShadow, unsigned int shadowMap, unsigned int shadowIndex, float constant, float linear, float quadratic, glm::vec3 position)
+            : LightAttenuation(ambient, diffuse, specular, hasShadow, shadowMap, shadowIndex, constant, linear, quadratic) {
             this->position = position;
         }
 
@@ -205,10 +164,54 @@ class PointLight : LightAttenuation {
         void setInShader(Shader &shader, const std::string &name) override {
             LightAttenuation::setInShader(shader, name);
             shader.setVec3(name + ".position", position);
+            shader.setFloat(name + ".farPlane", farPlane);
+        }
+
+        void bindShadowMap() override {
+            glActiveTexture(GL_TEXTURE0 + shadowMap);
+            glBindTexture(GL_TEXTURE_CUBE_MAP, depthMap);
+        }
+
+        void getLightSpaceMatrix(glm::mat4 &lightSpaceMatrix) override {
+            float aspect = (float)SHADOW_WIDTH / (float)SHADOW_HEIGHT;
+            lightSpaceMatrix = glm::perspective(glm::radians(90.0f), aspect, nearPlane, farPlane);
+        }
+
+        std::vector<glm::mat4> getShadowTransformations() {
+            glm::mat4 shadowProj;
+            getLightSpaceMatrix(shadowProj);
+            std::vector<glm::mat4> shadowTransforms;
+            shadowTransforms.push_back(shadowProj * glm::lookAt(position, position + glm::vec3(1.0f, 0.0f, 0.0f), glm::vec3(0.0f, -1.0f, 0.0f)));
+            shadowTransforms.push_back(shadowProj * glm::lookAt(position, position + glm::vec3(-1.0f, 0.0f, 0.0f), glm::vec3(0.0f, -1.0f, 0.0f)));
+            shadowTransforms.push_back(shadowProj * glm::lookAt(position, position + glm::vec3(0.0f, 1.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f)));
+            shadowTransforms.push_back(shadowProj * glm::lookAt(position, position + glm::vec3(0.0f, -1.0f, 0.0f), glm::vec3(0.0f, 0.0f, -1.0f)));
+            shadowTransforms.push_back(shadowProj * glm::lookAt(position, position + glm::vec3(0.0f, 0.0f, 1.0f), glm::vec3(0.0f, -1.0f, 0.0f)));
+            shadowTransforms.push_back(shadowProj * glm::lookAt(position, position + glm::vec3(0.0f, 0.0f, -1.0f), glm::vec3(0.0f, -1.0f, 0.0f)));
+            return shadowTransforms;
+        }
+    protected:
+        void initShadowMap() override {
+            glGenTextures(1, &depthMap);
+            glBindTexture(GL_TEXTURE_CUBE_MAP, depthMap);
+            for(unsigned int i = 0; i < 6; i++) {
+                glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, 0, GL_DEPTH_COMPONENT, SHADOW_WIDTH, SHADOW_HEIGHT, 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
+            }
+            glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+            glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+            glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+            glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+            glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+
+            glGenFramebuffers(1, &depthMapFBO);
+            glBindFramebuffer(GL_FRAMEBUFFER, depthMapFBO);
+            glFramebufferTexture(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, depthMap, 0);
+            glDrawBuffer(GL_NONE);
+            glReadBuffer(GL_NONE);
+            glBindFramebuffer(GL_FRAMEBUFFER, 0);
         }
 };
 
-class SpotLight : LightAttenuation {
+class SpotLight : public LightAttenuation {
     public:
         glm::vec3 position;
         glm::vec3 direction;
@@ -216,8 +219,8 @@ class SpotLight : LightAttenuation {
         float cutOff;
         float outerCutOff;
 
-        SpotLight(glm::vec3 ambient, glm::vec3 diffuse, glm::vec3 specular, bool hasShadow, unsigned int shadowMap, float constant, float linear, float quadratic, glm::vec3 position, glm::vec3 direction, float cutOff, float outerCutOff)
-            : LightAttenuation(ambient, diffuse, specular, hasShadow, shadowMap, constant, linear, quadratic) {
+        SpotLight(glm::vec3 ambient, glm::vec3 diffuse, glm::vec3 specular, bool hasShadow, unsigned int shadowMap, unsigned int shadowIndex, float constant, float linear, float quadratic, glm::vec3 position, glm::vec3 direction, float cutOff, float outerCutOff)
+            : LightAttenuation(ambient, diffuse, specular, hasShadow, shadowMap, shadowIndex, constant, linear, quadratic) {
             this->position = position;
             this->direction = direction;
             this->cutOff = cutOff;
@@ -231,5 +234,34 @@ class SpotLight : LightAttenuation {
             shader.setVec3(name + ".direction", direction);
             shader.setFloat(name + ".cutOff", cutOff);
             shader.setFloat(name + ".outerCutOff", outerCutOff);
+        }
+
+        void getLightSpaceMatrix(glm::mat4 &lightSpaceMatrix) override {
+            glm::mat4 lightProjection, lightView;
+            lightProjection = glm::perspective(glm::radians(90.0f), 1.0f, nearPlane, farPlane);
+            lightView = glm::lookAt(position, position + direction * 5.0f, glm::vec3(-direction.y, direction.x, direction.z));
+            lightSpaceMatrix = lightProjection * lightView;
+        }
+    protected:
+        const float nearPlane = 0.1f;
+        const float farPlane = 100.0f;
+
+        void initShadowMap() override {
+            glGenTextures(1, &depthMap);
+            glBindTexture(GL_TEXTURE_2D, depthMap);
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, SHADOW_WIDTH, SHADOW_HEIGHT, 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+            float borderColor[] = { 1.0f, 1.0f, 1.0f, 1.0f };
+            glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, borderColor);
+
+            glGenFramebuffers(1, &depthMapFBO);
+            glBindFramebuffer(GL_FRAMEBUFFER, depthMapFBO);
+            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, depthMap, 0);
+            glDrawBuffer(GL_NONE);
+            glReadBuffer(GL_NONE);
+            glBindFramebuffer(GL_FRAMEBUFFER, 0);
         }
 };
